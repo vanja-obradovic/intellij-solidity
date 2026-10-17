@@ -194,6 +194,13 @@
 
         <!-- Color settings -->
         <colorSettingsPage implementation="me.serce.solidity.ide.colors.SolColorSettingsPage"/>
+        <!-- the bundled schemes leave locals, globals and interface names in the plain text color -->
+        <additionalTextAttributes scheme="Dark" file="colorSchemes/SolidityDark.xml"/>
+        <additionalTextAttributes scheme="Islands Dark" file="colorSchemes/SolidityDark.xml"/>
+        <additionalTextAttributes scheme="Darcula" file="colorSchemes/SolidityDarcula.xml"/>
+        <additionalTextAttributes scheme="Light" file="colorSchemes/SolidityLight.xml"/>
+        <additionalTextAttributes scheme="IntelliJ Light" file="colorSchemes/SolidityLight.xml"/>
+        <additionalTextAttributes scheme="Default" file="colorSchemes/SolidityDefault.xml"/>
 
 
         <lang.psiStructureViewFactory language="Solidity"
