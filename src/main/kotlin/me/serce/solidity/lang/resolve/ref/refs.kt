@@ -23,6 +23,9 @@ class SolUserDefinedTypeNameReference(element: SolUserDefinedTypeName) : SolRefe
     } else if (parent is SolUsingForElement) {
       val resolved = SolResolver.resolveUsingForElement(element)
       if (resolved != null) return listOf(resolved)
+    } else if (parent is SolImportAliasedPair) {
+      val resolved = SolResolver.resolveImportedDeclaration(element)
+      if (resolved.isNotEmpty()) return resolved
     }
     return SolResolver.resolveTypeNameUsingImports(element)
   }

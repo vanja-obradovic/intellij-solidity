@@ -152,13 +152,11 @@ object SolResolver {
     alias: SolImportAlias, importRecord: ImportRecord, currentFile: PsiFile
   ): Set<SolNamedElement> {
     val elementFromAlias = (alias.parent as SolImportAliasedPair).userDefinedTypeName
-    val findElementFromNames = importRecord.names.find { it.name == elementFromAlias.nameOrText }
+    val name = elementFromAlias.nameOrText ?: return emptySet()
+    val exported = exportedDeclarations(importRecord.file).filter { it.name == name }
 
-    return if (findElementFromNames != null) {
-      setOf(findElementFromNames)
-    } else {
-      val filesOfScope = setOf(importRecord.file.virtualFile)
-      searchElementByStub(elementFromAlias.nameOrText!!, filesOfScope, currentFile.project)
+    return exported.toSet().ifEmpty {
+      searchElementByStub(name, setOf(importRecord.file.virtualFile), currentFile.project)
     }
   }
 
@@ -314,12 +312,13 @@ object SolResolver {
 
   data class ImportedName(val ref: SolNamedElement, val target: SolNamedElement)
 
+  // in source order, a file's own imports first: they win over what the imported files import in turn
   fun collectImports(file: PsiFile): Collection<ImportRecord> {
-    val all = hashSetOf<ImportRecord>()
-    for (directive in file.childrenOfType<SolImportDirective>()) {
-      all.addAll(collectImports(directive))
+    val perDirective = file.childrenOfType<SolImportDirective>().map { collectImports(it) }
+    return LinkedHashSet<ImportRecord>().apply {
+      perDirective.forEach { addAll(it.take(1)) }
+      perDirective.forEach { addAll(it) }
     }
-    return all
   }
 
   fun collectImports(import: SolImportDirective): Collection<ImportRecord> {
@@ -350,11 +349,10 @@ object SolResolver {
       val containingFile = import.importPath?.reference?.resolve()?.containingFile ?: return@mapNotNull null
       val aliases = import.importAliasedPairList
       val names = if (aliases.isNotEmpty() || import.importAlias != null) {
-        val exportedDeclarations = containingFile.children.filterIsInstance<SolNamedElement>().filter { element ->
-          exportElements.any { it.isAssignableFrom(element.javaClass) }
-        }
-        aliases.mapNotNull { importAliasPair -> importAliasPair.importAlias } + aliases.mapNotNull { importAliasPair ->
-          importAliasPair.userDefinedTypeName.name?.let { tn ->
+        val exportedDeclarations = exportedDeclarations(containingFile)
+        // `import {A as B}` brings in B only
+        aliases.mapNotNull { importAliasPair ->
+          importAliasPair.importAlias ?: importAliasPair.userDefinedTypeName.name?.let { tn ->
             exportedDeclarations.find { it.name == tn }
           }
         } + if (import.importAlias != null) listOf(import.importAlias!!) else emptyList()
@@ -377,6 +375,18 @@ object SolResolver {
       }
     }.flatten()
   }
+
+  // the name in `import {A as B} from "f"` is declared in "f"
+  fun resolveImportedDeclaration(element: SolUserDefinedTypeName): List<SolNamedElement> {
+    val import = element.parentOfType<SolImportDirective>() ?: return emptyList()
+    val file = import.importPath?.reference?.resolve()?.containingFile ?: return emptyList()
+    return exportedDeclarations(file).filter { it.name == element.name }
+  }
+
+  private fun exportedDeclarations(file: PsiFile): List<SolNamedElement> =
+    file.children.filterIsInstance<SolNamedElement>().filter { element ->
+      exportElements.any { it.isAssignableFrom(element.javaClass) }
+    }
 
   private fun isExternalLibrary(element: SolContractDefinition): Boolean {
     return (element.contractType == ContractType.LIBRARY

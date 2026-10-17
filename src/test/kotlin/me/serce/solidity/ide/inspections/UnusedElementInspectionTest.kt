@@ -83,6 +83,23 @@ class UnusedElementInspectionTest : SolInspectionsTestBase(UnusedElementInspecti
     )
   }
 
+  fun testUsedImportsOfSameNamedLibraries() = repeat(10) { i ->
+    myFixture.addFileToProject("v1/T$i.sol", "library L$i { function f() internal pure {} }")
+    myFixture.addFileToProject("v2/T$i.sol", "library L$i { function f() internal pure {} }")
+    myFixture.addFileToProject("Mid$i.sol", """
+        import {L$i} from "./v1/T$i.sol";
+        contract M$i {}
+    """)
+    checkByText("""
+        import {M$i} from "./Mid$i.sol";
+        import {L$i} from "./v2/T$i.sol";
+        import {L$i as LV1$i} from "./v1/T$i.sol";
+        contract C$i is M$i {
+            function g() external pure { L$i.f(); LV1$i.f(); }
+        }
+    """, checkWeakWarn = true)
+  }
+
   fun testUsedNamedImportFreeFunction() {
     InlineFile(
       code = """

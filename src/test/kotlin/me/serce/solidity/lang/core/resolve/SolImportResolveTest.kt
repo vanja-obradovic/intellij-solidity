@@ -1,8 +1,12 @@
 package me.serce.solidity.lang.core.resolve
 
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.psi.PsiFile
 import com.intellij.psi.PsiNamedElement
+import com.intellij.psi.util.PsiTreeUtil
+import me.serce.solidity.lang.psi.SolImportAliasedPair
 import me.serce.solidity.lang.psi.SolNamedElement
+import me.serce.solidity.lang.psi.SolVarLiteral
 import me.serce.solidity.lang.resolve.ref.SolImportConfigService
 import me.serce.solidity.lang.resolve.ref.SolImportPathReference
 
@@ -218,6 +222,57 @@ class SolImportResolveTest : SolResolveTestBase() {
 
     assertFalse(file.isValid)
     assertTrue(SolImportConfigService.getInstance(project).reverseRemappings(file).isEmpty())
+  }
+
+  // Two files declare the same library; the importing file names one of them directly and reaches the other
+  // through another import. Repeated under ten names, because a wrong pick used to depend on hash order.
+  fun testDirectImportWinsOverTransitiveOne() = repeat(10) { i ->
+    myFixture.addFileToProject("v1/T$i.sol", "library L$i { function f() internal pure {} }")
+    myFixture.addFileToProject("v2/T$i.sol", "library L$i { function f() internal pure {} }")
+    myFixture.addFileToProject("Mid$i.sol", """
+        import {L$i} from "./v1/T$i.sol";
+        contract M$i {}
+    """)
+    val main = myFixture.addFileToProject("Main$i.sol", """
+        import {M$i} from "./Mid$i.sol";
+        import {L$i} from "./v2/T$i.sol";
+        contract C$i is M$i { function g() internal pure { L$i.f(); } }
+    """)
+    assertEquals("v2/T$i.sol", resolvedFilePath(main, "L$i"))
+  }
+
+  // `import {L as LV1}` makes only LV1 visible, so a plain L means the other import
+  fun testAliasHidesTheOriginalName() = repeat(10) { i ->
+    myFixture.addFileToProject("v1/A$i.sol", "library P$i { function f() internal pure {} }")
+    myFixture.addFileToProject("v2/A$i.sol", "library P$i { function f() internal pure {} }")
+    val main = myFixture.addFileToProject("AliasMain$i.sol", """
+        import {P$i} from "./v2/A$i.sol";
+        import {P$i as PV1$i} from "./v1/A$i.sol";
+        contract C$i { function g() internal pure { P$i.f(); PV1$i.f(); } }
+    """)
+    assertEquals("v2/A$i.sol", resolvedFilePath(main, "P$i"))
+    assertEquals("v1/A$i.sol", resolvedFilePath(main, "PV1$i"))
+  }
+
+  // the imported name in each `import {V as X}` belongs to that import's own file
+  fun testImportedNameResolvesInItsImportFile() {
+    myFixture.addFileToProject("a/V.sol", "contract V {}")
+    myFixture.addFileToProject("b/V.sol", "contract V {}")
+    val main = myFixture.addFileToProject("ImportedName.sol", """
+        import {V as VA} from "./a/V.sol";
+        import {V as VB} from "./b/V.sol";
+        contract C {}
+    """)
+    val targets = PsiTreeUtil.findChildrenOfType(main, SolImportAliasedPair::class.java)
+      .map { it.userDefinedTypeName.reference!!.resolve()!!.containingFile.virtualFile.path.substringAfter("/src/") }
+    assertEquals(listOf("a/V.sol", "b/V.sol"), targets)
+  }
+
+  private fun resolvedFilePath(file: PsiFile, name: String): String {
+    val literal = PsiTreeUtil.findChildrenOfType(file, SolVarLiteral::class.java)
+      .first { it.name == name }
+    val target = checkNotNull(literal.reference?.resolve()) { "$name is unresolved" }
+    return target.containingFile.virtualFile.path.substringAfter("/src/")
   }
 
   override fun getTestDataPath() = "src/test/resources/fixtures/import/"
