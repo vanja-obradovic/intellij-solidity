@@ -1,6 +1,7 @@
 package me.serce.solidity.lang.resolve.ref
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiManager
@@ -35,7 +36,16 @@ class SolImportPathReference(element: SolImportPathElement) : SolReferenceBase<S
         ?: findNpmImportFile(file, path)
         ?: findEthPMImportFile(file, path)
         ?: findFoundryImportFile(project, file, path)
-      return resolved?.takeIf { it.isValid }
+      return resolved?.let { indexedTarget(project, it) }?.takeIf { it.isValid }
+    }
+
+    // pnpm links packages into an excluded node_modules, and the IDE indexes them only under the link target
+    private fun indexedTarget(project: Project, file: VirtualFile): VirtualFile {
+      val fileIndex = ProjectFileIndex.getInstance(project)
+      if (fileIndex.isInContent(file) || fileIndex.isInLibrary(file)) {
+        return file
+      }
+      return file.canonicalFile?.takeIf { fileIndex.isInContent(it) || fileIndex.isInLibrary(it) } ?: file
     }
 
     private fun findFoundryRemapping(project: Project, file: VirtualFile, path: String): VirtualFile? {

@@ -297,6 +297,17 @@ class SolInternalTypeFactory(project: Project) {
     """)
   }
 
+  val errorType: SolContract by lazy {
+    contract("""
+      contract ${internalise("ErrorType")} {
+							/**
+                the ABI error selector
+							*/
+							bytes4 selector;
+      }
+    """)
+  }
+
 
   val globalType: SolContract by lazy {
     contract("""

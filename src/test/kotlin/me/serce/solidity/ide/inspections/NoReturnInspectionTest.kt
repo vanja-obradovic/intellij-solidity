@@ -171,4 +171,57 @@ class NoReturnInspectionTest : SolInspectionsTestBase(NoReturnInspection()) {
           }
       }
     """)
+
+  fun testAssemblyReturnInNestedBlock() = checkByText("""
+      contract a {
+          function hash(uint[3] memory) public pure returns (uint) {
+              assembly {
+                  {
+                      mstore(0, 1)
+                      return(0, 0x20)
+                  }
+              }
+          }
+      }
+  """)
+
+  fun testReturnVariableWrittenThroughAssemblyPointer() = checkByText("""
+      contract a {
+          struct P { uint x; }
+          function f() internal view returns (P memory r) {
+              assembly {
+                  mstore(r, 1)
+              }
+          }
+      }
+  """)
+
+  fun testReturnVariableMembersAssigned() = checkByText("""
+      contract a {
+          struct P { uint x; uint[2] y; }
+          function f() internal pure returns (P memory r) {
+              r.x = 1;
+              r.y[0] = 2;
+          }
+      }
+  """)
+
+  fun testReturnVariableAssignedInLoop() = checkByText("""
+      contract a {
+          function f(uint[] calldata words) internal pure returns (uint y) {
+              for (uint i = words.length; i > 0; ) {
+                  unchecked { --i; }
+                  y = y + words[i];
+              }
+          }
+      }
+  """)
+
+  fun testReturnVariableNotAssigned() = checkByText("""
+      contract a {
+          function f() internal pure returns (/*@warning descr="Return variable not assigned"@*/uint y/*@/warning@*/) {
+              uint z = 1;
+          }
+      }
+  """)
 }

@@ -5,6 +5,7 @@ import com.intellij.codeInspection.ProblemsHolder
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiElementVisitor
 import com.intellij.psi.PsiRecursiveElementWalkingVisitor
+import com.intellij.psi.util.PsiTreeUtil
 import me.serce.solidity.lang.psi.*
 import me.serce.solidity.lang.types.SolInternalTypeFactory
 import me.serce.solidity.lang.types.findContract
@@ -85,6 +86,11 @@ private fun SolStatement.hasAssignment(el: SolNamedElement): Boolean {
     return it.hasAssignment(el)
   }
 
+  // a loop body may run zero times, but a variable written in it is meant to be its result
+  (this.forStatement?.statement ?: this.whileStatement?.statement ?: this.doWhileStatement?.statement)?.let {
+    return it.hasAssignment(el)
+  }
+
   this.tupleStatement?.let { st ->
     val declaration = st.variableDeclaration
     val expressions = st.expressionList
@@ -102,6 +108,13 @@ private fun SolStatement.hasAssignment(el: SolNamedElement): Boolean {
   }
 
   return false
+}
+
+// writing a member or an element of a memory struct or array counts as assigning the variable
+private fun SolExpression.isWriteTo(el: SolNamedElement): Boolean = when (this) {
+  is SolMemberAccessExpression -> expression.isWriteTo(el)
+  is SolIndexAccessExpression -> expressionList.firstOrNull()?.isWriteTo(el) == true
+  else -> isReferenceTo(el)
 }
 
 private fun SolExpression.isReferenceTo(el: SolNamedElement): Boolean {
@@ -160,17 +173,22 @@ private val SolStatement.returns: Boolean
     return false
   }
 
+// Yul calls that end the whole function, wherever they appear in the assembly block
+private val haltingYulCalls = setOf("return", "stop", "invalid")
+
 private val SolYulStatement.returns: Boolean
   get() {
     yulFunctionCall?.let {
-      return it.text.startsWith("return")//todo better
+      val callee = it.firstChild.text
+      return callee in haltingYulCalls || callee == "revert"
     }
     return false
   }
 
 private val SolYulBlock.returns: Boolean
   get() {
-    return this.yulStatementList.any { it.returns }
+    return this.yulStatementList.any { it.returns } ||
+      PsiTreeUtil.findChildrenOfType(this, SolYulFunctionCall::class.java).any { it.firstChild.text in haltingYulCalls }
   }
 
 private val SolBlock.returns: Boolean
@@ -199,17 +217,9 @@ private fun SolIfStatement.hasAssignment(el: SolNamedElement): Boolean =
 private fun SolVariableDefinition.hasAssignment(el: SolNamedElement): Boolean =
   this.variableDeclaration.reference?.resolve() == el
 
+// assembly writes a value variable by name and a memory variable through its pointer, so any use counts
 private fun SolYulBlock.hasAssignment(el: SolNamedElement): Boolean =
-  this.yulStatementList.any { it.hasAssignment(el) }
-
-private fun SolYulStatement.hasAssignment(el: SolNamedElement): Boolean {
-  this.yulAssignment?.let {
-    if (it.children.any { identifier -> identifier.text == el.name }) {//todo better
-      return true
-    }
-  }
-  return false
-}
+  PsiTreeUtil.findChildrenOfType(this, SolYulPath::class.java).any { it.firstChild.text == el.name }
 
 private fun SolDeclarationItem.hasAssignment(el: SolNamedElement): Boolean {
   return this.identifier?.text == el.name
@@ -223,7 +233,7 @@ private fun SolExpression.hasAssignment(el: SolNamedElement): Boolean {
   var hasAssignment = false
   this.accept(object : PsiRecursiveElementWalkingVisitor() {
     override fun visitElement(element: PsiElement) {
-      hasAssignment = element is SolAssignmentExpression && element.expressionList.any { it.isReferenceTo(el) } ||
+      hasAssignment = element is SolAssignmentExpression && element.expressionList.any { it.isWriteTo(el) } ||
         element is SolFunctionCallExpression && element.revert
       if (hasAssignment) {
         stopWalking()

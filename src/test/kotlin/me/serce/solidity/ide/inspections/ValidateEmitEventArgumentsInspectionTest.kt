@@ -6,7 +6,17 @@ class ValidateEmitEventArgumentsInspectionTest : SolInspectionsTestBase(Validate
         contract a {
             event TestEvent(uint a);
             function a() returns (uint result) {
-            /*@error descr="No arguments"@*/emit TestEvent()/*@/error@*/;
+            /*@error descr="Expected 1 argument, but got 0"@*/emit TestEvent()/*@/error@*/;
+                return 1;
+            }
+        }
+    """)
+
+  fun testEventWithoutParameters() = checkByText("""
+        contract a {
+            event TestEvent();
+            function a() returns (uint result) {
+                emit TestEvent();
                 return 1;
             }
         }

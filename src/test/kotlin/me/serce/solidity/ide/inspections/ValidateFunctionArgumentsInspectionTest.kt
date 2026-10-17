@@ -57,4 +57,25 @@ class ValidateFunctionArgumentsInspectionTest : SolInspectionsTestBase(ValidateF
         }
     """)
 
+  fun testHexLiteralToBytes() = checkByText("""
+        contract a {
+            function a() {
+                b(hex"01", hex"0102");
+            }
+
+            function b(bytes memory x, bytes2 y) {
+            }
+        }
+    """)
+
+  fun testHexLiteralToInteger() = checkByText("""
+        contract a {
+            function a() {
+                b(/*@error descr="Argument of type 'string' is not assignable to parameter of type 'uint8'"@*/hex"01"/*@/error@*/);
+            }
+
+            function b(uint8 x) {
+            }
+        }
+    """)
 }

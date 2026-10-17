@@ -141,6 +141,7 @@ fun inferDeclType(decl: SolNamedElement): SolType {
     is SolParameterDef -> getSolType(decl.typeName)
     is SolStateVariableDeclaration -> getSolType(decl.typeName)
     is SolFunctionDefinition -> SolFunctionType(decl)
+    is SolErrorDefinition -> SolErrorType
     is SolUserDefinedValueTypeDefinition -> SolUserDefinedValueTypeReferenceType(decl)
     else -> SolUnknown
   }
@@ -188,7 +189,7 @@ fun inferExprType(expr: SolExpression?): SolType {
         ?: expr.booleanLiteral?.let { SolBoolean }
         ?: expr.stringLiteral?.let { SolString.inferType(it) }
         ?: expr.numberLiteral?.let { SolInteger.inferType(it) }
-        ?: expr.hexLiteral?.let { SolInteger.inferType(it) }
+        ?: expr.hexLiteral?.let { SolString.inferType(it) }
         ?: expr.elementaryTypeName?.let { getSolType(it) }
         ?: SolUnknown
     }

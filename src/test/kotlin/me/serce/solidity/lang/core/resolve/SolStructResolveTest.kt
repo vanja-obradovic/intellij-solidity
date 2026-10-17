@@ -160,4 +160,20 @@ class SolStructResolveTest : SolResolveTestBase() {
        }
   """)
   )
+
+  fun testResolveSameNamedStructsInLibraries() = checkByCode("""
+        library A {
+            struct Input { uint256 a; }
+            function input() internal pure returns (Input memory i) { i.a = 1; }
+        }
+
+        library B {
+            struct Input { uint256 b; }
+                                 //x
+            function input() internal pure returns (Input memory i) {
+                i.b = 1;
+                //^
+            }
+        }
+  """)
 }

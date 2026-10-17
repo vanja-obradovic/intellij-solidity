@@ -33,12 +33,6 @@ class ValidateEmitEventArgumentsInspection : LocalInspectionTool() {
 
         val args = getParameters()
 
-        if (args?.size == 0) {
-          holder.registerProblem(o, "No arguments")
-
-          return
-        }
-
         getDefs()?.let {
           if (it.isEmpty()) {
             holder.registerProblem(o.parent?.firstChild?.lastChild?.firstChild

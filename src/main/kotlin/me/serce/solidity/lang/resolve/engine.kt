@@ -1,11 +1,15 @@
 package me.serce.solidity.lang.resolve
 
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.roots.ProjectFileIndex
 import com.intellij.openapi.util.RecursionManager
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
+import com.intellij.psi.PsiManager
 import com.intellij.psi.PsiNamedElement
+import com.intellij.psi.StubBasedPsiElement
+import com.intellij.psi.SyntaxTraverser
 import com.intellij.psi.search.GlobalSearchScope
 import com.intellij.psi.stubs.StubIndex
 import com.intellij.psi.util.*
@@ -64,7 +68,8 @@ object SolResolver {
         }
 
         val identifiedElements: Set<SolNamedElement> =
-          resolveElementInFileAndImports(elementIdentifiers, file, emptySet())
+          elementIdentifiers.singleOrNull()?.let { resolveTypeInEnclosingContract(element, it) }
+            ?: resolveElementInFileAndImports(elementIdentifiers, file, emptySet())
         CachedValueProvider.Result.create(identifiedElements, PsiModificationTracker.MODIFICATION_COUNT)
       }
     } ?: emptySet()
@@ -115,6 +120,15 @@ object SolResolver {
 
       else -> resolveFromPreviousOrStub(identifier, previousElements, imports, currentFile)
     }
+  }
+
+  // a type declared in the enclosing contract shadows same-named types declared elsewhere
+  private fun resolveTypeInEnclosingContract(element: PsiElement, identifier: PsiElement): Set<SolNamedElement>? {
+    val name = identifierFor(identifier) ?: return null
+    val contract = element.findContract() ?: return null
+    val nestedTypes: List<SolNamedElement> =
+      contract.structDefinitionList + contract.enumDefinitionList + contract.userDefinedValueTypeDefinitionList
+    return nestedTypes.filter { it.name == name }.toSet().takeIf { it.isNotEmpty() }
   }
 
   private fun identifierFor(element: PsiElement): String? = when (element) {
@@ -200,10 +214,36 @@ object SolResolver {
     } else {
       null
     }
-    return StubIndex.getElements(
+    val indexed = StubIndex.getElements(
       SolNamedElementIndex.KEY, identifierToFind, project, scope, SolNamedElement::class.java
     ).toSet()
+    if (indexed.isNotEmpty() || filesOfScope.isEmpty()) {
+      return indexed
+    }
+    return searchElementInUnindexedFiles(identifierToFind, filesOfScope, project)
   }
+
+  // Imports can reach files that are not indexed, e.g. an excluded node_modules folder
+  private fun searchElementInUnindexedFiles(
+    identifierToFind: String, filesOfScope: Set<VirtualFile>, project: Project
+  ): Set<SolNamedElement> {
+    val fileIndex = ProjectFileIndex.getInstance(project)
+    val psiManager = PsiManager.getInstance(project)
+    return filesOfScope.asSequence()
+      .filter { it.isValid && !fileIndex.isInContent(it) && !fileIndex.isInLibrary(it) }
+      .mapNotNull { psiManager.findFile(it) }
+      .flatMap { stubbedNamedElements(it)[identifierToFind].orEmpty() }
+      .toSet()
+  }
+
+  private fun stubbedNamedElements(file: PsiFile): Map<String, List<SolNamedElement>> =
+    CachedValuesManager.getCachedValue(file) {
+      val elements = SyntaxTraverser.psiTraverser(file)
+        .filter(SolNamedElement::class.java)
+        .filter { it is StubBasedPsiElement<*> && it.name != null }
+        .toList()
+      CachedValueProvider.Result.create(elements.groupBy { it.name!! }, file)
+    }
 
   data class ImportRecord(val file: PsiFile, val names: List<SolNamedElement>)
 
@@ -402,7 +442,7 @@ object SolResolver {
 
   private fun resolveTypeNameStrict(element: SolReferenceElement) : Collection<SolNamedElement> {
     val names = resolveTypeName(element)
-    return names.takeIf { it.size <= 1 } ?: resolveTypeNameUsingImports(element)
+    return names.takeIf { it.size == 1 } ?: resolveTypeNameUsingImports(element)
   }
 
   fun resolveVarLiteralReference(element: SolNamedElement): List<SolNamedElement> {
@@ -420,7 +460,11 @@ object SolResolver {
           val modifierInvocation = element.parent as SolModifierInvocation
           fun resolveModifier() = modifierInvocation.reference?.multiResolve()?.filterIsInstance<SolNamedElement>()?.takeIf { it.isNotEmpty() }
           when {
-            element.parent.parent is SolConstructorDefinition -> element.findContract()?.collectSupers?.filter { resolveTypeNameStrict(it).filterIsInstance<SolContractDefinition>().any { it.name == element.name } }?.takeIf { it.isNotEmpty() } ?: resolveModifier()
+            element.parent.parent is SolConstructorDefinition -> element.findContract()?.collectSupers?.filter { superName ->
+              // a base imported under an alias (`import {A as B}`, `contract C is B`) is called by its alias
+              (superName.name == element.name && superName.reference?.resolve() != null) ||
+                resolveTypeNameStrict(superName).filterIsInstance<SolContractDefinition>().any { it.name == element.name }
+            }?.takeIf { it.isNotEmpty() } ?: resolveModifier()
             else -> resolveModifier()
           } ?: emptyList()
         }

@@ -60,6 +60,9 @@ object SolUnknown : SolPrimitiveType {
 object SolErrorType : SolPrimitiveType {
   override fun isAssignableFrom(other: SolType): Boolean = other == this
 
+  override fun getMembers(project: Project): List<SolMember> =
+    getSdkMembers(SolInternalTypeFactory.of(project).errorType)
+
   override fun toString() = "error"
 }
 
@@ -84,6 +87,17 @@ data class SolString(val length: Int) : SolPrimitiveType {
         .removeSurrounding("\"")
         .removeSurrounding("'")
         .length)
+    }
+
+    private val hexPartRegex = """hex["']([0-9a-fA-F_]*)["']""".toRegex()
+
+    // hex"…" is a string literal written as hex digits, possibly split into several parts
+    fun inferType(hexLiteral: SolHexLiteral): SolType {
+      val digits = hexPartRegex.findAll(hexLiteral.text).map { it.groupValues[1].replace("_", "") }.toList()
+      if (digits.isEmpty() || digits.any { it.length % 2 != 0 }) {
+        return SolUnknown
+      }
+      return SolString(digits.sumOf { it.length } / 2)
     }
   }
 }
@@ -140,26 +154,6 @@ data class SolInteger(val unsigned: Boolean, val size: Int, val digitCount: Int?
 
     fun inferType(numberLiteral: SolNumberLiteral): SolInteger {
       return inferIntegerType(numberLiteral.parseLiteral())
-    }
-
-    fun inferType(numberLiteral: SolHexLiteral): SolInteger? {
-      val withoutPrefix = numberLiteral.text.substring(3) //
-        .removeSurrounding("\"") //
-        .removeSurrounding("'") //
-        .replace("_", "") // underscore is an allowed separator in hex literals
-      val value = when {
-          withoutPrefix.isEmpty() -> BigInteger.ZERO
-          else -> try {
-            withoutPrefix.toBigInteger(16)
-          } catch (_: NumberFormatException) {
-            null
-          }
-      }
-      if (value == null) {
-        return null
-      }
-      val parse = LiteralParseResult(value, NumericLiteralType.HEX, withoutPrefix.length)
-      return inferIntegerType(parse)
     }
 
     private fun inferIntegerType(parseResult: LiteralParseResult): SolInteger {

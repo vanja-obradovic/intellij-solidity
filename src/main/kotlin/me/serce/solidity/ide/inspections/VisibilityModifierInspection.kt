@@ -8,6 +8,7 @@ import com.intellij.psi.PsiElementVisitor
 import me.serce.solidity.lang.psi.SolFunctionDefinition
 import me.serce.solidity.lang.psi.SolStateVariableDeclaration
 import me.serce.solidity.lang.psi.SolVisitor
+import me.serce.solidity.lang.types.findContract
 
 class VisibilityModifierInspection : LocalInspectionTool() {
   override fun getDisplayName(): String = ""
@@ -15,7 +16,8 @@ class VisibilityModifierInspection : LocalInspectionTool() {
   override fun buildVisitor(holder: ProblemsHolder, isOnTheFly: Boolean): PsiElementVisitor {
     return object : SolVisitor() {
       override fun visitFunctionDefinition(o: SolFunctionDefinition) {
-        if (o.visibility == null) {
+        // free functions at file level cannot have a visibility
+        if (o.visibility == null && o.findContract() != null) {
           registerProblem((o.identifier ?: return))
         }
       }
