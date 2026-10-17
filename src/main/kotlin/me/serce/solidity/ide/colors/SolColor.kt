@@ -10,6 +10,8 @@ enum class SolColor(humanName: String, default: TextAttributesKey) {
   NAT_SPEC_TAG("Comments//NatSpecTag", Defaults.DOC_COMMENT_TAG),
 
   CONTRACT_NAME("Types//Contract name", Defaults.CLASS_NAME),
+  INTERFACE_NAME("Types//Interface name", Defaults.INTERFACE_NAME),
+  LIBRARY_NAME("Types//Library name", Defaults.CLASS_NAME),
   STRUCT_NAME("Types//Struct name", Defaults.CLASS_NAME),
   ERROR_NAME("Types//Error name", Defaults.CLASS_NAME),
   EVENT_NAME("Types//Event name", Defaults.CLASS_NAME),
@@ -19,8 +21,13 @@ enum class SolColor(humanName: String, default: TextAttributesKey) {
   USER_DEFINED_VALUE_TYPE("Types//User-defined value type", Defaults.CLASS_NAME),
 
   GLOBAL("Identifiers//Global", Defaults.GLOBAL_VARIABLE),
+  BUILTIN_MEMBER("Identifiers//Built-in member", GLOBAL.textAttributesKey),
   CONSTANT("Identifiers//Constant", Defaults.STATIC_FIELD),
+  IMMUTABLE("Identifiers//Immutable", Defaults.CONSTANT),
   STATE_VARIABLE("Identifiers//State variable", Defaults.INSTANCE_FIELD),
+  // drawn on top of the state variable color, so by default it only adds an underline
+  STATE_VARIABLE_WRITE("Identifiers//State variable write", Defaults.REASSIGNED_LOCAL_VARIABLE),
+  LOCAL_VARIABLE("Identifiers//Local variable", Defaults.LOCAL_VARIABLE),
   STRUCT_MEMBER("Identifiers//Struct member", XmlHighlighterColors.XML_CUSTOM_TAG_NAME),
 
   FUNCTION_DECLARATION("Functions//Function declaration", Defaults.FUNCTION_DECLARATION),
@@ -28,6 +35,9 @@ enum class SolColor(humanName: String, default: TextAttributesKey) {
   RECEIVE_FALLBACK_DECLARATION("Functions//Receive/Fallback declaration", Defaults.STATIC_METHOD),
   FUNCTION_CALL("Functions//Function call", Defaults.FUNCTION_CALL),
   GLOBAL_FUNCTION_CALL("Functions//Global function call", Defaults.GLOBAL_VARIABLE),
+  MODIFIER("Functions//Modifier", Defaults.METADATA),
+
+  YUL_BUILTIN("Assembly//Built-in function", GLOBAL_FUNCTION_CALL.textAttributesKey),
 
   BRACES("Other//Braces", Defaults.BRACES),
   BRACKETS("Other//Brackets", Defaults.BRACKETS),
